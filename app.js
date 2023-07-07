@@ -1,22 +1,22 @@
 const express = require('express');
-const shortId = require('shortid');
 const ejs = require('ejs');
-var flash = require('connect-flash');
 const mongoose = require('mongoose');
-var cookieParser = require('cookie-parser');
-const bodyParser = require('body-parser');
 var session = require('express-session');
-
+var flash = require('connect-flash');
+var cookieParser = require('cookie-parser');
+const shortId = require('shortid');
+var md5 = require('md5');
 
 const app = express();
 
 main().catch(err => console.log(err));
 
 async function main() {
-    await mongoose.connect('mongodb://127.0.0.1:27017/shortUrl');
+    await mongoose.connect('mongodb://127.0.0.1:27017/srtUrl');
 
 }
 
+app.use(express.static("public"));
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser())
@@ -28,124 +28,204 @@ app.use(session({
 }))
 app.use(flash());
 
-
-
-
-const shortschema = new mongoose.Schema({
-    completeurl: {
+const srtUrlSchema = new mongoose.Schema({
+    fullurl: {
         type: String,
         required: true
     },
     note: {
         type: String,
     },
-    shortedurl: {
+    short: {
         type: String,
         required: true,
         default: shortId.generate
     },
+    
 })
 
-const ShortUrl = mongoose.model('ShortUrl', shortschema);
 
+const userSchema = new mongoose.Schema({
+    email : String,
+    password : String
+});
+
+
+const SrtUrl = mongoose.model('SrtUrl', srtUrlSchema);
+const User = mongoose.model("User", userSchema);
 
 app.get('/', async (req, res) => {
-    res.render('main');
+    res.render('login',{tr7:req.flash('tr7'),tr8:req.flash('tr8'),tr11:req.flash('tr11')})
 })
 
-// app.get('/search', async (req, res) => {
-//     let temp2 = req.flash('success2')
-//     let temp3 = req.flash('success4')
-//     let temp4 = req.flash('success6')
-//     res.render('search', { success: temp2, shortUrls: temp3, success4: temp4 });
-// })
+app.get('/password', async (req, res) => {
+    res.render('password',{tr9:req.flash('tr9'),tr10:req.flash('tr10')})
+})
 
 
-// app.get('/index', async (req, res) => {
-//     let temp1 = req.flash('success1')
-//     let temp2 = req.flash('success3')
-//     let temp3 = req.flash('success5')
-//     let temp4 = req.flash('success6')
-//     const url2 = await ShortUrl.find({ fullurl: temp2 });
+app.get('/signup', async (req, res) => {
+    res.render('signup',{tr12:req.flash('tr12')})
+})
 
-//     // console.log(url2);
-//     res.render('index', { success: temp1, shortUrls: url2, success1: temp3, success2: temp4 });
-// })
+app.get('/create', async (req, res) => {
+    const temp_url = await SrtUrl.find({ fullurl:req.flash('tr3')});
+
+    console.log(await SrtUrl.find({ fullurl:req.flash('tr3')}));
+    res.render('main',{tr1: req.flash('tr1'), tr5:req.flash('tr5'),tr6:req.flash('tr6'), tr3:temp_url});
+})
+
+app.post('/create', async (req, res) => {
+    const fullUrl = req.body.cUrl;
+    const Note = req.body.cNote;
+    const furl = await SrtUrl.find({ fullurl: fullUrl });
+    const note = await SrtUrl.find({ note: Note });
+
+
+    console.log(note);
+    if (note.length > 0) {
+        req.flash('tr6', "This note is already present in database.")
+        return res.redirect('/create');
+    }
+
+    if (furl.length == 0) {
+        const shortUrl = new SrtUrl({
+            fullurl: fullUrl,
+            note: Note
+        })
+        let temp = shortUrl.save();
+        if (temp) {
+            req.flash('tr1', "Url shortened")
+            req.flash('tr3', fullUrl)
+        }
+
+        res.redirect('/create');
+    }
+    else {
+        req.flash('tr2', "Shortened url  is already present in , search it via full url or note.")
+        res.redirect('/search')
+
+    }
+})
+
+app.get('/search', async (req, res) => {
+    res.render('search',{tr2:req.flash('tr2'),tr6:req.flash('tr6'),tr4:req.flash('tr4')});
+})
+
+
+app.post('/search', async (req, res) => {
+    const fullUrl1 = req.body.sUrl;
+    let Note1 = req.body.sNote;
+    let furl1;
+    // console.log(FullUrl1,Note1);
+    if (fullUrl1 == "" && Note1 == "") {
+        req.flash('tr6', "Fill out any one of the section to get results.");
+        return res.redirect('/search');
+    }
+    if (fullUrl1 != "") {
+        furl1 = await SrtUrl.find({ fullurl: fullUrl1 });
+    }
+    else if (Note1 != "") {
+        furl1 = await SrtUrl.find({ note: Note1 });
+    }
+
+
+    if (furl1.length > 0) {
+        req.flash('tr4', furl1);
+        res.redirect('/search');
+    }
+    else {
+        req.flash('tr5', "Short URL not exists, you can create short url here")
+        res.redirect('/create')
+    }
+
+})
+
+app.post('/signup' ,async (req, res) => {
+    const username = req.body.username1;
+    let user = await User.findOne({email : username});
+    if(!user){
+        const newUser = new User({
+            email : req.body.username1,
+            password : md5(req.body.password1)
+        })
+
+        newUser.save();
+
+        res.redirect('/create');
+    }
+    else{
+        req.flash('tr12', "Email-Id already exist");
+        res.redirect('/signup')
+    }
+})
+
+app.post('/login', async (req,res) => {
+    const username = req.body.username;
+    const password = md5(req.body.password);
+
+    let user = await User.findOne({email : username});
+    if(user){
+        if(user.password===password){
+            res.redirect('/create');
+        }
+        else{
+            req.flash('tr7', "password not match");
+            res.redirect('/')
+        }
+    }
+    else{
+        req.flash('tr8', "user not found, please signup main");
+        res.redirect('/')
+    }
+})
+
+
+app.post('/password', async (req, res) => {
+    const username = req.body.username2;
+    const password1 = md5(req.body.pass1);
+    const password2 = md5(req.body.pass2);
+    let user = await User.findOne({email : username});
+    // console.log(md5(user.password));
+    if(user){
+        if(password1 === password2){
+            await User.updateOne(    
+                {email : username},
+                {password : password1},
+            )
+
+            req.flash('tr11', "password changes successfully");
+            res.redirect('/');
+        }
+        else{
+            req.flash('tr10', "confirm password not match");
+            res.redirect('/password')
+        }
+    }
+    else{
+        req.flash('tr9', "user not found");
+        res.redirect('/password')
+    }
+})
 
 
 
-// app.post('/index', async (req, res) => {
-//     const FullUrl = req.body.fullUrl;
-//     const Note = req.body.note;
-//     const url = await ShortUrl.find({ fullurl: FullUrl });
-//     const note = await ShortUrl.find({ note: Note });
+app.get('/:shortUrl', async (req, res) => {
+    const temp = await SrtUrl.findOne({ short: req.params.shortUrl });
+    if (temp == null) return res.sendStatus(404);
 
-//     // console.log(note);
-//     if (note.length > 0) {
-//         req.flash('success6', "Note already exists")
-//         return res.redirect('/index');
-//     }
+    temp.save();
+    res.redirect(temp.fullurl);
+})
 
-//     if (url.length == 0) {
-//         const shortUrl = new ShortUrl({
-//             fullurl: FullUrl,
-//             note: Note
-//         })
 
-//         let temp = shortUrl.save();
-//         if (temp) {
-//             req.flash('success1', "Short URL created successfully")
-//             req.flash('success3', FullUrl)
-//         }
-
-//         res.redirect('/index');
-//     }
-//     else {
-//         // console.log("note already exists1212")
-//         req.flash('success2', "Short URL already exists, you can search short url here")
-//         res.redirect('/search')
-
-//     }
-// })
-
-// app.post('/search', async (req, res) => {
-//     const FullUrl1 = req.body.fullUrl1;
-//     let Note1 = req.body.note1;
-//     let url1;
-//     // console.log(FullUrl1,Note1);
-//     if (FullUrl1 == "" && Note1 == "") {
-//         req.flash('success6', "Fill out one of the section below to search");
-//         return res.redirect('/search');
-//     }
-//     if (FullUrl1 != "") {
-//         url1 = await ShortUrl.find({ fullurl: FullUrl1 });
-//     }
-//     else if (Note1 != "") {
-//         url1 = await ShortUrl.find({ note: Note1 });
-//     }
-
-//     // console.log(url1)
-
-//     if (url1.length > 0) {
-//         req.flash('success4', url1);
-//         res.redirect('/search');
-//     }
-//     else {
-//         req.flash('success5', "Short URL not exists, you can create short url here")
-//         res.redirect('/index')
-//     }
-
-// })
-
-// app.get('/:shortUrl', async (req, res) => {
-//     const temp = await ShortUrl.findOne({ short: req.params.shortUrl });
-//     if (temp == null) return res.sendStatus(404);
-
-//     temp.save();
-//     res.redirect(temp.fullurl);
-// })
 
 const port = process.env.PORT || 3000;
 app.listen(port, function () {
-    console.log(`listening on port ${port}`);
+    console.log(`server started on port ${port}`);
 });
+
+
+
+
+
+

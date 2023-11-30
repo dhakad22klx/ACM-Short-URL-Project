@@ -212,7 +212,6 @@ app.post('/password', async (req, res) => {
 app.get('/:shortUrl', async (req, res) => {
     const temp = await SrtUrl.findOne({ short: req.params.shortUrl });
     if (temp == null) return res.sendStatus(404);
-
     temp.save();
     res.redirect(temp.fullurl);
 })
